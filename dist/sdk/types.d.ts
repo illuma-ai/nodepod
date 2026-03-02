@@ -1,0 +1,53 @@
+import type { VolumeSnapshot } from "../engine-types";
+export interface NodepodOptions {
+    files?: Record<string, string | Uint8Array>;
+    env?: Record<string, string>;
+    workdir?: string;
+    swUrl?: string;
+    onServerReady?: (port: number, url: string) => void;
+    /** Show a small "nodepod" watermark link in preview iframes. Defaults to true. */
+    watermark?: boolean;
+}
+export interface TerminalTheme {
+    background?: string;
+    foreground?: string;
+    cursor?: string;
+    selectionBackground?: string;
+    black?: string;
+    red?: string;
+    green?: string;
+    yellow?: string;
+    blue?: string;
+    magenta?: string;
+    cyan?: string;
+    white?: string;
+    brightBlack?: string;
+    brightRed?: string;
+    brightGreen?: string;
+    brightYellow?: string;
+    brightBlue?: string;
+    brightMagenta?: string;
+    brightCyan?: string;
+    brightWhite?: string;
+}
+export interface TerminalOptions {
+    Terminal: any;
+    FitAddon?: any;
+    WebglAddon?: any;
+    theme?: TerminalTheme;
+    fontSize?: number;
+    fontFamily?: string;
+    prompt?: (cwd: string) => string;
+}
+export interface StatResult {
+    isFile: boolean;
+    isDirectory: boolean;
+    size: number;
+    mtime: number;
+}
+export type Snapshot = VolumeSnapshot;
+export interface SpawnOptions {
+    cwd?: string;
+    env?: Record<string, string>;
+    signal?: AbortSignal;
+}

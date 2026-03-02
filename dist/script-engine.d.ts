@@ -1,0 +1,79 @@
+import { MemoryVolume } from "./memory-volume";
+import type { ExecutionOutcome } from "./engine-types";
+import { ProcessObject } from "./polyfills/process";
+export declare function setChildProcessPolyfill(mod: any): void;
+export interface ModuleRecord {
+    id: string;
+    filename: string;
+    exports: unknown;
+    loaded: boolean;
+    children: ModuleRecord[];
+    paths: string[];
+}
+export interface EngineOptions {
+    cwd?: string;
+    env?: Record<string, string>;
+    onConsole?: (method: string, args: unknown[]) => void;
+    onStdout?: (data: string) => void;
+    onStderr?: (data: string) => void;
+    workerThreadsOverride?: {
+        isMainThread: boolean;
+        parentPort: unknown;
+        workerData: unknown;
+        threadId: number;
+    };
+}
+export interface ResolverFn {
+    (id: string): unknown;
+    resolve: (id: string, options?: {
+        paths?: string[];
+    }) => string;
+    cache: Record<string, ModuleRecord>;
+    extensions: Record<string, unknown>;
+    main: ModuleRecord | null;
+}
+export declare class ScriptEngine {
+    private vol;
+    private fsBridge;
+    private proc;
+    private moduleRegistry;
+    private opts;
+    private transformCache;
+    constructor(vol: MemoryVolume, opts?: EngineOptions);
+    private patchTextDecoder;
+    private patchStackTraceApi;
+    execute(code: string, filename?: string): {
+        exports: unknown;
+        module: ModuleRecord;
+    };
+    executeSync: (code: string, filename?: string) => {
+        exports: unknown;
+        module: ModuleRecord;
+    };
+    executeAsync(code: string, filename?: string): Promise<ExecutionOutcome>;
+    runFile(filename: string): {
+        exports: unknown;
+        module: ModuleRecord;
+    };
+    runFileSync: (filename: string) => {
+        exports: unknown;
+        module: ModuleRecord;
+    };
+    runFileTLA(filename: string): Promise<{
+        exports: unknown;
+        module: ModuleRecord;
+    }>;
+    runFileAsync(filename: string): Promise<ExecutionOutcome>;
+    clearCache(): void;
+    getVolume(): MemoryVolume;
+    getProcess(): ProcessObject;
+    createREPL(): {
+        eval: (code: string) => unknown;
+    };
+}
+export declare function executeCode(code: string, vol: MemoryVolume, opts?: EngineOptions): {
+    exports: unknown;
+    module: ModuleRecord;
+};
+export type { IScriptEngine, ExecutionOutcome, EngineConfig, } from "./engine-types";
+export default ScriptEngine;
