@@ -3,6 +3,9 @@ node_modules/
 
 # Build output (dist/ is NOT ignored — it's published to npm)
 
+# Auth tokens — NEVER commit
+.npmrc
+
 # Environment variables
 .env
 .env.local
@@ -12,6 +15,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Windows reserved device names (created by shell redirect errors)
+nul
 
 # Editor files
 .vscode/

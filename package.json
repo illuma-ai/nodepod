@@ -1,18 +1,24 @@
 {
-  "name": "@scelar/nodepod",
-  "version": "1.0.8",
+  "name": "@illuma-ai/nodepod",
+  "version": "1.0.1",
   "description": "Browser-native Node.js runtime environment",
   "type": "module",
-  "license": "MIT WITH Commons-Clause",
-  "author": "R1ck404 (https://github.com/R1ck404)",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Illuma AI (https://github.com/illuma-ai)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "contributors": [
+    "R1ck404 (https://github.com/R1ck404)"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ScelarOrg/Nodepod.git"
+    "url": "git+https://github.com/illuma-ai/nodepod.git"
   },
   "bugs": {
-    "url": "https://github.com/ScelarOrg/Nodepod/issues"
+    "url": "https://github.com/illuma-ai/nodepod/issues"
   },
-  "homepage": "https://github.com/ScelarOrg/Nodepod#readme",
+  "homepage": "https://github.com/illuma-ai/nodepod#readme",
   "keywords": [
     "node",
     "browser",
