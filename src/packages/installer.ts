@@ -16,6 +16,7 @@ import * as path from "../polyfills/path";
 import type { IDBSnapshotCache } from "../persistence/idb-cache";
 import { quickDigest } from "../helpers/digest";
 import { base64ToBytes } from "../helpers/byte-encoding";
+import type { PrebundleStore } from "./prebundle/store";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -91,12 +92,19 @@ export class DependencyInstaller {
   private registryClient: RegistryClient;
   private workingDir: string;
   private _snapshotCache: IDBSnapshotCache | null;
+  private _prebundleStore: PrebundleStore | null;
 
-  constructor(vol: MemoryVolume, opts: { cwd?: string; snapshotCache?: IDBSnapshotCache | null } & RegistryConfig = {}) {
+  constructor(vol: MemoryVolume, opts: { cwd?: string; snapshotCache?: IDBSnapshotCache | null; prebundleStore?: PrebundleStore | null } & RegistryConfig = {}) {
     this.vol = vol;
     this.registryClient = new RegistryClient(opts);
     this.workingDir = opts.cwd || "/";
     this._snapshotCache = opts.snapshotCache ?? null;
+    this._prebundleStore = opts.prebundleStore ?? null;
+  }
+
+  /** Set or replace the prebundle store after construction. */
+  setPrebundleStore(store: PrebundleStore | null): void {
+    this._prebundleStore = store;
   }
 
   // -----------------------------------------------------------------------
@@ -276,6 +284,8 @@ export class DependencyInstaller {
       targetDir: string;
     }> = [];
 
+    // Phase 1: Satisfy as many packages as possible from the prebundle store
+    const prebundled: string[] = [];
     for (const [depName, dep] of tree) {
       const targetDir = path.join(nmRoot, depName);
       const existingManifest = path.join(targetDir, "package.json");
@@ -294,7 +304,23 @@ export class DependencyInstaller {
         }
       }
 
+      // Check prebundle store before queueing for download
+      if (this._prebundleStore?.has(depName, dep.version)) {
+        onProgress?.(`  Loading ${depName}@${dep.version} (prebundled)`);
+        const count = this._prebundleStore.materialize(depName, this.vol, nmRoot);
+        if (count > 0) {
+          this.createBinStubs(nmRoot, depName, targetDir);
+          prebundled.push(depName);
+          additions.push(depName);
+          continue;
+        }
+      }
+
       pending.push({ depName, dep, targetDir });
+    }
+
+    if (prebundled.length > 0) {
+      onProgress?.(`Loaded ${prebundled.length} prebundled package(s)`);
     }
 
     // Only need main-thread transformer as fallback when workers aren't available

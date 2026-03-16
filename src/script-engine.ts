@@ -128,6 +128,10 @@ import {
   compileWasmInWorker,
 } from "./helpers/wasm-cache";
 import * as acorn from "acorn";
+import acornJsx from "acorn-jsx";
+
+// acorn parser extended with JSX support for synchronous JSX transformation
+const acornWithJsx = (acorn.Parser as any).extend(acornJsx());
 
 // ── TypeScript type stripper ──
 // Regex-based stripping of TS syntax so acorn/eval can handle it at runtime.
@@ -297,6 +301,229 @@ function traverseAst(node: any, visitor: (n: any) => void): void {
 // ── Dynamic import regex fallback ──
 function rewriteDynamicImportsRegex(source: string): string {
   return source.replace(/(?<![.$\w])import\s*\(/g, "__asyncLoad(");
+}
+
+// ── JSX detection ──
+function containsJsxSyntax(source: string): boolean {
+  // Quick heuristic: look for JSX-like patterns
+  if (/<[A-Z][a-zA-Z0-9.]*[\s/>]/.test(source)) return true;
+  if (/<\/[a-zA-Z]/.test(source)) return true;
+  if (/<>|<\/>/.test(source)) return true;
+  return false;
+}
+
+function needsJsxTransform(filePath: string, source: string): boolean {
+  if (filePath.endsWith(".jsx") || filePath.endsWith(".tsx")) return true;
+  // Also detect JSX in plain .js files
+  return containsJsxSyntax(source);
+}
+
+// ── Synchronous JSX → React.createElement transformer ──
+// Uses acorn-jsx to parse JSX and converts it to createElement calls.
+// This runs synchronously in the require() pipeline.
+function transformJsxSync(source: string, filePath: string): string {
+  let ast: any;
+  try {
+    ast = acornWithJsx.parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      allowImportExportEverywhere: true,
+    });
+  } catch {
+    // If parsing fails, return source unchanged
+    return source;
+  }
+
+  // Collect JSX patches (reverse order for safe splicing)
+  const patches: Array<[number, number, string]> = [];
+
+  function jsxNodeToCode(node: any): string {
+    if (!node) return "null";
+
+    switch (node.type) {
+      case "JSXElement":
+        return jsxElementToCode(node);
+      case "JSXFragment":
+        return jsxFragmentToCode(node);
+      case "JSXText":
+        return jsxTextToCode(node);
+      case "JSXExpressionContainer":
+        if (node.expression.type === "JSXEmptyExpression") return "";
+        return source.slice(node.expression.start, node.expression.end);
+      case "JSXSpreadChild":
+        return source.slice(node.expression.start, node.expression.end);
+      default:
+        return source.slice(node.start, node.end);
+    }
+  }
+
+  function jsxTextToCode(node: any): string {
+    const raw = node.value as string;
+    // Collapse whitespace like React does
+    const trimmed = raw
+      .replace(/\n\s*/g, " ")
+      .replace(/\s+/g, " ");
+    if (!trimmed.trim()) return "";
+    return JSON.stringify(trimmed);
+  }
+
+  function jsxNameToCode(nameNode: any): string {
+    if (nameNode.type === "JSXIdentifier") {
+      const name = nameNode.name;
+      // Lowercase = HTML element (string), uppercase = component (identifier)
+      if (/^[a-z]/.test(name)) return JSON.stringify(name);
+      return name;
+    }
+    if (nameNode.type === "JSXMemberExpression") {
+      return jsxMemberToCode(nameNode);
+    }
+    if (nameNode.type === "JSXNamespacedName") {
+      return JSON.stringify(nameNode.namespace.name + ":" + nameNode.name.name);
+    }
+    return source.slice(nameNode.start, nameNode.end);
+  }
+
+  function jsxMemberToCode(node: any): string {
+    if (node.type === "JSXMemberExpression") {
+      return jsxMemberToCode(node.object) + "." + node.property.name;
+    }
+    if (node.type === "JSXIdentifier") {
+      return node.name;
+    }
+    return source.slice(node.start, node.end);
+  }
+
+  function jsxAttrValueToCode(attr: any): string {
+    if (!attr.value) return "true";
+    if (attr.value.type === "Literal" || attr.value.type === "StringLiteral") {
+      return JSON.stringify(attr.value.value);
+    }
+    if (attr.value.type === "JSXExpressionContainer") {
+      return source.slice(
+        attr.value.expression.start,
+        attr.value.expression.end,
+      );
+    }
+    if (attr.value.type === "JSXElement") {
+      return jsxElementToCode(attr.value);
+    }
+    if (attr.value.type === "JSXFragment") {
+      return jsxFragmentToCode(attr.value);
+    }
+    return source.slice(attr.value.start, attr.value.end);
+  }
+
+  function jsxPropsToCode(attrs: any[]): string {
+    if (!attrs || attrs.length === 0) return "null";
+
+    const hasSpread = attrs.some(
+      (a: any) => a.type === "JSXSpreadAttribute",
+    );
+
+    if (hasSpread) {
+      // Use Object.assign for spread attributes
+      const parts: string[] = ["{}"];
+      let currentObj: string[] = [];
+
+      const flushCurrentObj = () => {
+        if (currentObj.length > 0) {
+          parts.push("{" + currentObj.join(", ") + "}");
+          currentObj = [];
+        }
+      };
+
+      for (const attr of attrs) {
+        if (attr.type === "JSXSpreadAttribute") {
+          flushCurrentObj();
+          parts.push(
+            source.slice(attr.argument.start, attr.argument.end),
+          );
+        } else {
+          const key = attr.name.type === "JSXNamespacedName"
+            ? JSON.stringify(attr.name.namespace.name + ":" + attr.name.name.name)
+            : /^[a-zA-Z_$][\w$]*$/.test(attr.name.name)
+              ? attr.name.name
+              : JSON.stringify(attr.name.name);
+          currentObj.push(`${key}: ${jsxAttrValueToCode(attr)}`);
+        }
+      }
+      flushCurrentObj();
+      return `Object.assign(${parts.join(", ")})`;
+    }
+
+    const props = attrs.map((attr: any) => {
+      const key = attr.name.type === "JSXNamespacedName"
+        ? JSON.stringify(attr.name.namespace.name + ":" + attr.name.name.name)
+        : /^[a-zA-Z_$][\w$]*$/.test(attr.name.name)
+          ? attr.name.name
+          : JSON.stringify(attr.name.name);
+      return `${key}: ${jsxAttrValueToCode(attr)}`;
+    });
+    return "{" + props.join(", ") + "}";
+  }
+
+  function jsxChildrenToArgs(children: any[]): string[] {
+    const args: string[] = [];
+    for (const child of children) {
+      const code = jsxNodeToCode(child);
+      if (code) args.push(code);
+    }
+    return args;
+  }
+
+  function jsxElementToCode(node: any): string {
+    const tag = jsxNameToCode(node.openingElement.name);
+    const props = jsxPropsToCode(node.openingElement.attributes);
+    const childArgs = jsxChildrenToArgs(node.children);
+    const allArgs = [tag, props, ...childArgs];
+    return `React.createElement(${allArgs.join(", ")})`;
+  }
+
+  function jsxFragmentToCode(node: any): string {
+    const childArgs = jsxChildrenToArgs(node.children);
+    const allArgs = ["React.Fragment", "null", ...childArgs];
+    return `React.createElement(${allArgs.join(", ")})`;
+  }
+
+  // Walk AST and collect top-level JSX patches
+  function walkAndPatch(node: any): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walkAndPatch(child);
+      return;
+    }
+
+    if (node.type === "JSXElement" || node.type === "JSXFragment") {
+      patches.push([node.start, node.end, jsxNodeToCode(node)]);
+      return; // Don't recurse into children — they're handled by jsxNodeToCode
+    }
+
+    for (const key of Object.keys(node)) {
+      if (
+        key === "type" ||
+        key === "start" ||
+        key === "end" ||
+        key === "loc" ||
+        key === "range"
+      )
+        continue;
+      const val = node[key];
+      if (val && typeof val === "object") walkAndPatch(val);
+    }
+  }
+
+  walkAndPatch(ast);
+
+  if (patches.length === 0) return source;
+
+  // Apply patches in reverse order
+  let output = source;
+  patches.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  for (const [s, e, r] of patches) {
+    output = output.slice(0, s) + r + output.slice(e);
+  }
+
+  return output;
 }
 
 // ── ESM → CJS conversion ──
@@ -1258,6 +1485,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return { code, map: null, errors: [], warnings: [] };
           },
           transformSync: (filename: string, code: string, opts?: any) => {
@@ -1267,6 +1496,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return { code, map: null, errors: [], warnings: [] };
           },
           enhancedTransform: async (
@@ -1280,6 +1511,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return {
               code,
               map: null,
@@ -1300,6 +1533,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return {
               code,
               map: null,
@@ -1339,6 +1574,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return { code, map: null, deps: [], dynamicDeps: [], errors: [] };
           },
           moduleRunnerTransformSync: (filename: string, code: string) => {
@@ -1347,6 +1584,8 @@ function buildResolver(
               (isTypeScriptFile(filename) || looksLikeTypeScript(code))
             )
               code = stripTypeScript(code);
+            if (!isCSSFile(filename) && needsJsxTransform(filename, code))
+              code = transformJsxSync(code, filename);
             return { code, map: null, deps: [], dynamicDeps: [], errors: [] };
           },
           Severity: { Error: "Error", Warning: "Warning", Advice: "Advice" },
@@ -2466,6 +2705,10 @@ function buildResolver(
       if (isTypeScriptFile(resolved)) {
         processedCode = stripTypeScript(processedCode);
       }
+      // Transform JSX/TSX syntax to React.createElement calls
+      if (needsJsxTransform(resolved, processedCode)) {
+        processedCode = transformJsxSync(processedCode, resolved);
+      }
       if (resolved.endsWith(".cjs")) {
         // CJS: only rewrite import()/import.meta via AST, skip full ESM conversion
         try {
@@ -3382,6 +3625,10 @@ export class ScriptEngine {
     if (isTypeScriptFile(filename)) {
       processed = stripTypeScript(processed);
     }
+    // Transform JSX/TSX syntax to React.createElement calls
+    if (needsJsxTransform(filename, processed)) {
+      processed = transformJsxSync(processed, filename);
+    }
     if (filename.endsWith(".cjs")) {
       try {
         const cjsAst = acorn.parse(processed, {
@@ -3526,6 +3773,10 @@ export class ScriptEngine {
       processed = processed.slice(processed.indexOf("\n") + 1);
     if (isTypeScriptFile(filename)) {
       processed = stripTypeScript(processed);
+    }
+    // Transform JSX/TSX syntax to React.createElement calls
+    if (needsJsxTransform(filename, processed)) {
+      processed = transformJsxSync(processed, filename);
     }
     if (filename.endsWith(".cjs")) {
       processed = rewriteDynamicImportsRegex(processed);

@@ -1,5 +1,6 @@
 import type { VolumeSnapshot } from "../engine-types";
 import type { MemoryHandlerOptions } from "../memory-handler";
+import type { PrebundleData } from "../packages/prebundle/types";
 
 /* ---- Boot options ---- */
 
@@ -18,6 +19,12 @@ export interface NodepodOptions {
   /** domains allowed through the cors proxy. merged with built-in defaults
    *  (npm, github, esm.sh etc). pass null to allow everything */
   allowedFetchDomains?: string[] | null;
+  /**
+   * Pre-bundled package data to load at boot time. Packages in these
+   * bundles are written directly to the VFS during install, skipping
+   * registry fetches and module transforms entirely.
+   */
+  prebundles?: PrebundleData[];
 }
 
 /* ---- Terminal ---- */

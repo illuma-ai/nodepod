@@ -28,6 +28,7 @@ import {
 import { SyncChannelController } from "../threading/sync-channel";
 import { MemoryHandler } from "../memory-handler";
 import { openSnapshotCache } from "../persistence/idb-cache";
+import { PrebundleStore } from "../packages/prebundle/store";
 
 export class Nodepod {
   readonly fs: NodepodFS;
@@ -167,7 +168,16 @@ export class Nodepod {
       }
     }
 
-    const packages = new DependencyInstaller(volume, { snapshotCache });
+    // Wire up prebundle store if bundles were provided
+    let prebundleStore: PrebundleStore | null = null;
+    if (opts.prebundles && opts.prebundles.length > 0) {
+      prebundleStore = new PrebundleStore();
+      for (const bundle of opts.prebundles) {
+        prebundleStore.addBundle(bundle);
+      }
+    }
+
+    const packages = new DependencyInstaller(volume, { snapshotCache, prebundleStore });
     const proxy = getProxyInstance({
       onServerReady: opts.onServerReady,
     });

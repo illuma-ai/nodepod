@@ -2,6 +2,7 @@ import { MemoryVolume } from "../memory-volume";
 import { RegistryConfig } from "./registry-client";
 import { ResolvedDependency } from "./version-resolver";
 import type { IDBSnapshotCache } from "../persistence/idb-cache";
+import type { PrebundleStore } from "./prebundle/store";
 export interface InstallFlags {
     registry?: string;
     persist?: boolean;
@@ -24,10 +25,14 @@ export declare class DependencyInstaller {
     private registryClient;
     private workingDir;
     private _snapshotCache;
+    private _prebundleStore;
     constructor(vol: MemoryVolume, opts?: {
         cwd?: string;
         snapshotCache?: IDBSnapshotCache | null;
+        prebundleStore?: PrebundleStore | null;
     } & RegistryConfig);
+    /** Set or replace the prebundle store after construction. */
+    setPrebundleStore(store: PrebundleStore | null): void;
     install(packageName: string, version?: string, flags?: InstallFlags): Promise<InstallOutcome>;
     installFromManifest(manifestPath?: string, flags?: InstallFlags): Promise<InstallOutcome>;
     listInstalled(): Record<string, string>;

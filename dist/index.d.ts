@@ -19,6 +19,8 @@ export * as querystring from "./polyfills/querystring";
 export * as util from "./polyfills/util";
 export * as npm from "./packages/installer";
 export { DependencyInstaller, install } from "./packages/installer";
+export { PrebundleStore, satisfiesRange } from "./packages/prebundle";
+export type { PrebundleData, PrebundledPackage, PrebundleFile, PrebundleManifest, PrebundleManifestEntry, } from "./packages/prebundle";
 export { RequestProxy, getProxyInstance, resetProxy } from "./request-proxy";
 export type { ProxyOptions, ServiceWorkerConfig } from "./request-proxy";
 export * as chokidar from "./polyfills/chokidar";

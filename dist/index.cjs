@@ -2,7 +2,7 @@
 
 Object.defineProperties(exports, { __esModule: { value: true }, [Symbol.toStringTag]: { value: 'Module' } });
 
-const index = require('./index-DVbLKdL5.cjs');
+const index = require('./index-DHo9Y19z.cjs');
 
 
 
@@ -15,6 +15,7 @@ exports.Nodepod = index.Nodepod;
 exports.NodepodFS = index.NodepodFS;
 exports.NodepodProcess = index.NodepodProcess;
 exports.NodepodTerminal = index.NodepodTerminal;
+exports.PrebundleStore = index.PrebundleStore;
 exports.ProcessHandle = index.ProcessHandle;
 exports.ProcessManager = index.ProcessManager;
 exports.ProcessWorkerAdapter = index.ProcessWorkerAdapter;
@@ -56,6 +57,7 @@ exports.querystring = index.qsPolyfill;
 exports.readdirp = index.scannerPolyfill;
 exports.resetProxy = index.resetProxy;
 exports.rollup = index.rollupPolyfill;
+exports.satisfiesRange = index.satisfiesRange;
 exports.setActiveContext = index.setActiveContext;
 exports.spawnEngine = index.spawnEngine;
 exports.spawnProcessWorkerEngine = index.spawnProcessWorkerEngine;
